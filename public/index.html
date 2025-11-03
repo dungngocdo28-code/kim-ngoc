@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<title>Chatbot Thiên Kim — Giọng Ban Mai</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root{--primary:#f06b9a;--muted:#666;}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;}
+  body{
+    background:linear-gradient(180deg,#f4f6f8 0%,#eef2f6 100%);
+    display:flex;align-items:center;justify-content:center;padding:28px;
+  }
+  .card{
+    width:460px;max-width:96%;background:#fff;border-radius:14px;
+    box-shadow:0 12px 40px rgba(14,18,30,0.08);padding:18px;text-align:center;
+  }
+  h1{margin:6px 0;color:var(--primary);font-size:20px}
+  p.lead{margin:6px 0 12px;color:var(--muted);font-size:14px}
+  .avatar-frame{width:300px;height:300px;border-radius:18px;overflow:hidden;
+    margin:12px auto;position:relative;background-size:cover;background-position:center;}
+  .avatar-frame.with-img{background-image:url('/office_bg.jpg');}
+  .avatar-wrapper{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
+  .avatar{width:92%;height:92%;object-fit:cover;border-radius:10px;}
+  .nameplate{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);
+    background:rgba(0,0,0,0.65);color:#fff;padding:6px 12px;border-radius:999px;
+    font-weight:600;font-size:15px;}
+  .controls{display:flex;gap:8px;justify-content:center;margin-top:10px;}
+  button{background:var(--primary);color:#fff;border:0;border-radius:8px;padding:10px 14px;cursor:pointer;}
+  .secondary{background:#7a8a98;}
+  .status{margin-top:10px;color:var(--muted);font-size:13px;}
+  .log{margin-top:12px;text-align:left;background:#fafafa;border-radius:8px;
+    padding:10px;max-height:160px;overflow:auto;font-size:14px;}
+</style>
+</head>
+
+<body>
+  <div class="card">
+    <h1>Chatbot HR — Thiên Kim 💼</h1>
+    <p class="lead">Phỏng vấn nhân sự — Giọng Ban Mai (FPT.AI)</p>
+
+    <div class="avatar-frame with-img">
+      <div class="avatar-wrapper">
+        <img src="/avatar_hr.png" class="avatar" alt="Thiên Kim" />
+        <div class="nameplate">Thiên Kim — Nhân sự</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn">🎙️ Bắt đầu</button>
+      <button id="stopBtn" class="secondary">⏹ Dừng</button>
+    </div>
+
+    <div class="status" id="statusText">Nhấn “Bắt đầu” để trò chuyện.</div>
+    <div class="log" id="chatLog"></div>
+  </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+const QUESTIONS = [
+  "Xin chào, tôi là Thiên Kim phụ trách nhân sự. Rất vui được gặp bạn!",
+  "Bạn có biết hôm nay là thứ mấy không?",
+  "Theo bạn, buổi sáng nên làm gì đầu tiên?",
+  "Bạn có thể giải thích ý nghĩa của 'tôn trọng' trong giao tiếp không?",
+  "Theo bạn, tha thứ có khó không?",
+  "Bạn nên nói gì khi ai đó đang buồn?",
+  "Bạn thích thú cưng không?",
+  "Con vật nào dễ nuôi nhất theo bạn?",
+  "Chào tạm biệt bạn và hẹn gặp lại!"
+];
+
+let current = 0, recognition = null, isRunning = false;
+const statusEl = document.getElementById('statusText');
+const chatLog = document.getElementById('chatLog');
+
+function appendLog(who, text){
+  const d=document.createElement('div');
+  d.innerHTML=`<strong>${who}:</strong> ${text}`;
+  chatLog.appendChild(d);
+  chatLog.scrollTop=chatLog.scrollHeight;
+}
+
+async function speakServer(msg){
+  try{
+    const r = await fetch('/api/tts',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text:msg})
+    });
+    if(r.ok){
+      const b=await r.blob();
+      const url=URL.createObjectURL(b);
+      const audio=new Audio(url);
+      await audio.play().catch(()=>setStatus("🔇 Bật tiếng nhé!"));
+      audio.onended=()=>URL.revokeObjectURL(url);
+    }
+  }catch(e){console.error("💥 Lỗi TTS:",e);}
+}
+
+async function getGPTReply(userInput){
+  try{
+    const r=await fetch('/api/chat',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:userInput})
+    });
+    const j=await r.json();
+    return j.reply || "Cảm ơn bạn nhé!";
+  }catch(e){return "Xin lỗi, có lỗi kết nối.";}
+}
+
+function setStatus(t){ statusEl.textContent=t; }
+
+function initRecognition(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){alert("Trình duyệt không hỗ trợ voice. Dùng Chrome nhé.");return null;}
+  const r=new SR(); r.lang='vi-VN'; r.interimResults=false; r.maxAlternatives=1;
+  r.onresult=async e=>{
+    const userText=e.results[0][0].transcript.trim();
+    appendLog("Bạn",userText);
+    const reply=await getGPTReply(userText);
+    appendLog("Thiên Kim",reply);
+    await speakServer(reply);
+
+    if(current < QUESTIONS.length-1){
+      current++;
+      appendLog("Thiên Kim",QUESTIONS[current]);
+      await speakServer(QUESTIONS[current]);
+      recognition.start();
+    } else {
+      setStatus("✅ Hoàn thành trò chuyện.");
+      isRunning=false;
+    }
+  };
+  return r;
+}
+
+document.getElementById('startBtn').onclick=async()=>{
+  if(isRunning) return;
+  isRunning=true; current=0; chatLog.innerHTML="";
+  recognition=initRecognition();
+  appendLog("Thiên Kim",QUESTIONS[current]);
+  await speakServer(QUESTIONS[current]);
+  recognition.start();
+};
+
+document.getElementById('stopBtn').onclick=()=>{
+  if(recognition) recognition.stop();
+  isRunning=false;
+  setStatus("⏹ Đã dừng.");
+};
+
+});
+</script>
+</body>
+</html>
